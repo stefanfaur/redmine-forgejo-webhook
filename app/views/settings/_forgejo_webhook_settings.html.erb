@@ -1,0 +1,46 @@
+<div class="box">
+  <p>
+    <label for="settings_secret_token">Secret Token</label>
+    <%= text_field_tag 'settings[secret_token]', 
+                       @settings['secret_token'], 
+                       class: 'long',
+                       placeholder: 'Enter a secret token to verify webhook signatures' %>
+    <br/>
+    <em>Optional: Set a secret token to verify webhook requests from Forgejo/Gitea.</em>
+  </p>
+  
+  <p>
+    <%= check_box_tag 'settings[auto_close_issues]', 
+                      'true', 
+                      @settings['auto_close_issues'] %>
+    <label for="settings_auto_close_issues">Automatically close issues</label>
+    <br/>
+    <em>Close issues when commit messages contain keywords like "fixes #123" or "closes #123".</em>
+  </p>
+  
+  <p>
+    <%= check_box_tag 'settings[auto_reopen_issues]', 
+                      'true', 
+                      @settings['auto_reopen_issues'] %>
+    <label for="settings_auto_reopen_issues">Automatically reopen issues</label>
+    <br/>
+    <em>Reopen issues when commit messages contain keywords like "reopen #123".</em>
+  </p>
+</div>
+
+<div class="box">
+  <h3>Webhook URL</h3>
+  <p>
+    Configure your Forgejo/Gitea repository webhook to point to:
+  </p>
+  <pre><code><%= root_url %>forgejo/webhook</code></pre>
+  <p>
+    Or for a specific project:
+  </p>
+  <pre><code><%= root_url %>forgejo/webhook/<strong>PROJECT_IDENTIFIER</strong></code></pre>
+  
+  <p>
+    <strong>Content type:</strong> application/json<br/>
+    <strong>Events:</strong> Push events, Pull request events (optional), Issue events (optional)
+  </p>
+</div>
