@@ -18,7 +18,7 @@ This plugin allows Redmine to receive and process webhooks from Forgejo and Gite
 
 ```bash
 cd /path/to/redmine/plugins
-git clone https://github.com/vanzhiganov/redmine-forgejo-webhook.git redmine_forgejo_webhook
+git clone https://github.com/stefanfaur/redmine-forgejo-webhook.git redmine_forgejo_webhook
 ```
 
 2. Restart your Redmine instance:
@@ -147,7 +147,7 @@ To contribute or modify this plugin:
 
 ```bash
 # Clone the repository
-git clone https://github.com/vanzhiganov/redmine-forgejo-webhook.git
+git clone https://github.com/stefanfaur/redmine-forgejo-webhook.git
 
 # Make your changes
 
@@ -166,4 +166,4 @@ Created by vanzhiganov
 ## Support
 
 For issues, questions, or contributions, please visit:
-https://github.com/vanzhiganov/redmine-forgejo-webhook
+https://github.com/stefanfaur/redmine-forgejo-webhook

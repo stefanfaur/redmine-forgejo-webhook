@@ -3,7 +3,7 @@ Redmine::Plugin.register :redmine_forgejo_webhook do
   author 'vanzhiganov'
   description 'Plugin to receive webhooks from Forgejo/Gitea and update Redmine issues'
   version '0.1.0'
-  url 'https://github.com/vanzhiganov/redmine-forgejo-webhook'
+  url 'https://github.com/stefanfaur/redmine-forgejo-webhook'
   author_url 'https://github.com/vanzhiganov'
 
   settings default: {
