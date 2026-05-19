@@ -48,7 +48,7 @@ module ForgejoWebhook
     end
 
     def textile_blockquote(text)
-      "\nbq.. #{text}\n\np. "
+      "\nbq.. #{text}\n\np. \n"
     end
 
     def markdown_blockquote(text)

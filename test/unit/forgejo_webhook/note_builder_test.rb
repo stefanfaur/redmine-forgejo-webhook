@@ -71,5 +71,7 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     assert_includes note, 'bq.. feat: add'
     assert_includes note, 'Body line.'
     assert_includes note, "\np. " # terminator paragraph
+    assert_match(/bq\.\. .+Body line\..*\np\. /m, note,
+                 'textile terminator must appear after body content')
   end
 end
