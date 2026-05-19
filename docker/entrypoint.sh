@@ -26,17 +26,21 @@ rm -f db/test.sqlite3
 bundle exec rake db:migrate redmine:plugins:migrate RAILS_ENV=test --trace
 
 case "${1:-test}" in
+  shell|bash)
+    exec bash
+    ;;
   test)
-    shift || true
+    shift
     exec bundle exec rake redmine:plugins:test \
         NAME="$PLUGIN_NAME" \
         RAILS_ENV=test \
         "$@"
     ;;
-  shell|bash)
-    exec bash
-    ;;
   *)
-    exec "$@"
+    # Default: anything else (e.g. `TEST=...`) is forwarded to the rake task.
+    exec bundle exec rake redmine:plugins:test \
+        NAME="$PLUGIN_NAME" \
+        RAILS_ENV=test \
+        "$@"
     ;;
 esac
