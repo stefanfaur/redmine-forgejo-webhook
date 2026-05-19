@@ -46,4 +46,19 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     note = ForgejoWebhook::NoteBuilder.new('msg', {}, nil).call
     assert_equal 'Commit referenced this issue', note.lines.first.chomp
   end
+
+  def test_preserves_blank_lines_within_message_body
+    message = "subject\n\nparagraph 2"
+    note = ForgejoWebhook::NoteBuilder.new(message, { 'sha' => 'aaaaaaaa' }, nil).call
+    assert_includes note.lines, "> \n", "blank line in body should render as a bare `> ` line"
+    assert_includes note, "> subject"
+    assert_includes note, "> paragraph 2"
+  end
+
+  def test_nests_existing_blockquote_markers_in_body
+    message = "> quoted line\nrest"
+    note = ForgejoWebhook::NoteBuilder.new(message, { 'sha' => 'aaaaaaaa' }, nil).call
+    assert_includes note, "> > quoted line"
+    assert_includes note, "> rest"
+  end
 end
