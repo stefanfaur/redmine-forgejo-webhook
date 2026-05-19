@@ -39,7 +39,16 @@ module ForgejoWebhook
     end
 
     def blockquote
-      markdown_blockquote(body)
+      case Setting.text_formatting
+      when 'textile'
+        textile_blockquote(body)
+      else
+        markdown_blockquote(body)
+      end
+    end
+
+    def textile_blockquote(text)
+      "\nbq.. #{text}\n\np. "
     end
 
     def markdown_blockquote(text)

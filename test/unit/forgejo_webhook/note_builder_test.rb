@@ -61,4 +61,15 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     assert_includes note, "> > quoted line"
     assert_includes note, "> rest"
   end
+
+  def test_renders_textile_blockquote_when_setting_textile
+    Setting.text_formatting = 'textile'
+
+    message = "feat: add\n\nBody line."
+    note = ForgejoWebhook::NoteBuilder.new(message, { 'sha' => 'aaaaaaaa' }, nil).call
+
+    assert_includes note, 'bq.. feat: add'
+    assert_includes note, 'Body line.'
+    assert_includes note, "\np. " # terminator paragraph
+  end
 end
