@@ -18,7 +18,7 @@ module ForgejoWebhook
 
     def lookup
       return nil if email.blank? && username.blank?
-      by_email
+      by_email || by_username
     end
 
     def by_email
@@ -26,6 +26,14 @@ module ForgejoWebhook
       ea = EmailAddress.find_by(address: email.downcase)
       user = ea&.user
       user if user&.active?
+    end
+
+    def by_username
+      return nil if username.blank?
+      # Redmine validates login uniqueness case-insensitively but does NOT downcase
+      # on write, so a case-insensitive comparison is required. This forces a
+      # sequential scan over `users`; acceptable for webhook traffic volume.
+      User.active.where('LOWER(login) = ?', username.downcase).first
     end
 
     def build_attribution

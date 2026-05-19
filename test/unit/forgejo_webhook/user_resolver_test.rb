@@ -18,4 +18,34 @@ class ForgejoWebhook::UserResolverTest < ActiveSupport::TestCase
     assert_equal User.anonymous, result.user
     assert_equal 'Author: Jane', result.attribution
   end
+
+  def test_falls_through_to_username_when_email_misses
+    user = User.find(2) # jsmith
+    result = ForgejoWebhook::UserResolver.new(
+      name: nil, email: 'unknown@x.com', username: 'JSmith'
+    ).call
+
+    assert_equal user, result.user
+  end
+
+  def test_skips_locked_user_matched_by_email_and_falls_through
+    locked = User.find(3) # dlopper (standard fixtures); has email dlopper@somenet.foo
+    locked.update_column(:status, User::STATUS_LOCKED)
+    active = User.find(2) # jsmith
+
+    result = ForgejoWebhook::UserResolver.new(
+      name: nil, email: locked.mail, username: active.login
+    ).call
+
+    assert_equal active, result.user
+  end
+
+  def test_returns_anonymous_when_nothing_matches
+    result = ForgejoWebhook::UserResolver.new(
+      name: 'Ghost', email: 'nobody@nowhere.invalid', username: 'ghost-user'
+    ).call
+
+    assert_equal User.anonymous, result.user
+    assert_equal 'Author: Ghost <nobody@nowhere.invalid>', result.attribution
+  end
 end
