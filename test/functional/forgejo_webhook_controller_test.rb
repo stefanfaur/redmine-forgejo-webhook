@@ -72,6 +72,19 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
     end
   end
 
+  def test_pr_event_with_null_pull_request_does_not_crash
+    payload = { 'action' => 'opened', 'pull_request' => nil }
+
+    @request.headers['Content-Type'] = 'application/json'
+    @request.headers['X-Gitea-Event'] = 'pull_request'
+
+    assert_no_difference 'Issue.find(1).journals.count' do
+      post :create, body: payload.to_json
+    end
+
+    assert_response :success
+  end
+
   def test_pr_event_attributes_to_pr_opener_via_username
     payload = JSON.parse(File.read(Rails.root.join('plugins/redmine_forgejo_webhook/test/fixtures/forgejo_webhook/pull_request_payload.json')))
 

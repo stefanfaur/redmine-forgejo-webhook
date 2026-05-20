@@ -81,6 +81,10 @@ class ForgejoWebhookController < ApplicationController
     # All PR actions (opened, synchronize, label, assign, ...) are processed.
     # Pre-existing behavior; filter by action in a future change if spam becomes an issue.
     pr = payload['pull_request']
+    unless pr.is_a?(Hash)
+      Rails.logger.warn "Forgejo Webhook: PR event missing pull_request payload"
+      return
+    end
     user_hash = pr['user'].is_a?(Hash) ? pr['user'] : {}
     actor = {
       name:     user_hash['full_name'].presence || user_hash['login'],
