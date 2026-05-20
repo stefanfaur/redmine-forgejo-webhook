@@ -62,17 +62,55 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     assert_includes note, "> rest"
   end
 
-  def test_renders_textile_blockquote_when_setting_textile
+  def test_uses_markdown_blockquote_regardless_of_text_formatting_setting
     Setting.text_formatting = 'textile'
 
     message = "feat: add\n\nBody line."
     note = ForgejoWebhook::NoteBuilder.new(message, { 'sha' => 'aaaaaaaa' }, nil).call
 
-    assert_includes note, 'bq.. feat: add'
-    assert_includes note, 'Body line.'
-    assert_includes note, "\np. " # terminator paragraph
-    assert_match(/bq\.\. .+Body line\..*\np\. /m, note,
-                 'textile terminator must appear after body content')
+    refute_match(/bq\.\./, note, "no leftover textile 'bq..' marker in note source")
+    refute_match(/(^|\n)p\. /, note, "no leftover textile 'p.' terminator in note source")
+    assert_includes note, '> feat: add'
+    assert_includes note, '> Body line.'
+  end
+
+  # Renders the generated note through Redmine's textile (RedCloth) formatter
+  # and verifies no textile-style block markers leak as literal text in HTML.
+  # Repros the original user bug: `bq..` / `p.` appearing verbatim in journal.
+  def test_textile_render_does_not_leak_textile_block_markers
+    Setting.text_formatting = 'textile'
+
+    message = "[CR #5071]: test multiline comment\n\n" \
+              "- first line after empty line\n" \
+              "- second line\n" \
+              "- some other info"
+    commit = { 'sha' => '41981d11', 'url' => 'https://example.com/c/41981d11' }
+    note = ForgejoWebhook::NoteBuilder.new(message, commit,
+                                           'Author: sfaur <stefan.faur@irian.ro>').call
+
+    html = Redmine::WikiFormatting.to_html('textile', note).to_s
+
+    refute_match(/bq\.\./, html,
+                 "raw 'bq..' marker must not appear in rendered HTML (got: #{html})")
+    refute_match(/(^|>)\s*p\.\s*(<|$)/, html,
+                 "raw 'p.' terminator must not appear in rendered HTML (got: #{html})")
+    assert_includes html, '[CR #5071]: test multiline comment',
+                    "body content must survive rendering (got: #{html})"
+  end
+
+  def test_markdown_render_produces_blockquote_element
+    Setting.text_formatting = 'markdown'
+
+    message = "feat: add thing\n\nDetailed body.\nSecond line."
+    commit = { 'sha' => 'a1b2c3d4', 'url' => 'https://example.com/c/a1b2c3d4' }
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, 'Author: Jane <jane@x.com>').call
+
+    html = Redmine::WikiFormatting.to_html(Setting.text_formatting, note).to_s
+
+    assert_match(%r{<blockquote\b}, html,
+                 "expected a <blockquote> element in rendered HTML (got: #{html})")
+    refute_match(/^&gt; /, html,
+                 "raw '> ' prefix must not appear in rendered HTML (got: #{html})")
   end
 
   def test_truncates_message_byte_safely_when_oversized

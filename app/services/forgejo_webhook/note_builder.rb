@@ -47,20 +47,7 @@ module ForgejoWebhook
     end
 
     def blockquote
-      case Setting.text_formatting
-      when 'textile'
-        textile_blockquote(body)
-      else
-        markdown_blockquote(body)
-      end
-    end
-
-    def textile_blockquote(text)
-      "\nbq.. #{text}\n\np. \n"
-    end
-
-    def markdown_blockquote(text)
-      "\n" + text.each_line.map { |l| "> #{l.chomp}" }.join("\n")
+      "\n" + body.each_line.map { |l| "> #{l.chomp}" }.join("\n")
     end
 
     def truncate(note)
