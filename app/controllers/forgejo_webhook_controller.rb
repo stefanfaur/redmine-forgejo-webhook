@@ -86,6 +86,7 @@ class ForgejoWebhookController < ApplicationController
     Rails.logger.info "Forgejo Webhook: Pull request #{action}: ##{pr_number} - #{title}"
 
     # Process PR title and body for issue references
+    # TODO(task-8): wire PR sender as actor via pull_request.user
     process_commit_message(title, pr, {})
     process_commit_message(body, pr, {}) if body.present?
   end
@@ -152,7 +153,7 @@ class ForgejoWebhookController < ApplicationController
 
     Rails.logger.warn "Forgejo Webhook: save as #{user.login.presence || 'anonymous'} failed: #{issue.errors.full_messages.join(', ')}"
     false
-  rescue => e
+  rescue ActiveRecord::ActiveRecordError => e
     Rails.logger.error "Forgejo Webhook: save raised #{e.class}: #{e.message}"
     false
   end
