@@ -57,19 +57,7 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
 
   def test_falls_back_to_anonymous_when_resolved_user_save_fails
     # Make the first save attempt fail so the controller retries as anonymous.
-    # We monkey-patch Issue#save to fail the first call and then restore the
-    # original method so the anonymous retry actually persists the journal.
-    Issue.class_eval do
-      alias_method :__orig_save_for_fallback_test, :save
-      @@__fallback_test_calls = 0
-      def save(*args, **kwargs)
-        @@__fallback_test_calls += 1
-        return false if @@__fallback_test_calls == 1
-        __orig_save_for_fallback_test(*args, **kwargs)
-      end
-    end
-
-    begin
+    with_failing_first_save do
       @request.headers['Content-Type'] = 'application/json'
       @request.headers['X-Gitea-Event'] = 'push'
 
@@ -79,14 +67,8 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
 
       journal = Issue.find(1).journals.last
       assert_equal User.anonymous, journal.user
-      assert_equal 2, self.class.class_variable_get(:@@__fallback_test_calls),
+      assert_equal 2, failing_save_call_count,
                    'expected exactly 2 Issue#save invocations (1 failed + 1 anonymous retry)'
-    ensure
-      Issue.class_eval do
-        remove_method :save
-        alias_method :save, :__orig_save_for_fallback_test
-        remove_method :__orig_save_for_fallback_test
-      end
     end
   end
 
@@ -100,5 +82,66 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
     journal = Issue.find(1).journals.last
     assert_equal User.find(2), journal.user
     assert_includes journal.notes, 'Author: John Smith'
+  end
+
+  def test_close_keyword_closes_issue_with_resolved_user
+    payload = push_payload
+    payload['commits'][0]['message'] = "feat: thing fixes #1\n\nDetails."
+
+    @request.headers['Content-Type'] = 'application/json'
+    @request.headers['X-Gitea-Event'] = 'push'
+    post :create, body: payload.to_json
+
+    issue = Issue.find(1)
+    assert issue.closed?, 'issue should be closed'
+    assert_equal User.find(2), issue.journals.last.user
+  end
+
+  def test_close_keyword_still_closes_when_save_falls_back_to_anonymous
+    with_failing_first_save do
+      payload = push_payload
+      payload['commits'][0]['message'] = "fixes #1"
+
+      @request.headers['Content-Type'] = 'application/json'
+      @request.headers['X-Gitea-Event'] = 'push'
+      post :create, body: payload.to_json
+
+      issue = Issue.find(1)
+      assert issue.closed?, 'issue should still close via anonymous retry'
+      assert_equal User.anonymous, issue.journals.last.user
+
+      assert_equal 2, failing_save_call_count,
+                   'expected exactly 2 Issue#save invocations (1 failed + 1 anonymous retry)'
+    end
+  end
+
+  private
+
+  # Monkey-patches Issue#save so the first call returns false (simulating a
+  # validation/permission failure) and subsequent calls hit the original
+  # implementation. Restores the original method on block exit even if the
+  # block raises. Pair with #failing_save_call_count to assert the invocation
+  # count.
+  def with_failing_first_save
+    Issue.class_eval do
+      alias_method :__orig_save_for_test, :save
+      @@__failing_save_calls = 0
+      def save(*args, **kwargs)
+        @@__failing_save_calls += 1
+        return false if @@__failing_save_calls == 1
+        __orig_save_for_test(*args, **kwargs)
+      end
+    end
+    yield
+  ensure
+    Issue.class_eval do
+      remove_method :save
+      alias_method :save, :__orig_save_for_test
+      remove_method :__orig_save_for_test
+    end
+  end
+
+  def failing_save_call_count
+    self.class.class_variable_get(:@@__failing_save_calls)
   end
 end
