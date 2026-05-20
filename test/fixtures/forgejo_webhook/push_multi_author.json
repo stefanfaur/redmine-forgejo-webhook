@@ -1,0 +1,19 @@
+{
+  "repository": { "name": "demo" },
+  "commits": [
+    {
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "url": "https://forge.example/demo/commit/aaaaaaaa",
+      "message": "first commit refs #1",
+      "author": { "name": "John Smith", "email": "jsmith@somenet.foo", "username": "jsmith" }
+    },
+    {
+      "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "url": "https://forge.example/demo/commit/bbbbbbbb",
+      "message": "second commit refs #1",
+      "author": { "name": "Dave Lopper", "email": "dlopper@somenet.foo", "username": "dlopper" }
+    }
+  ]
+}
