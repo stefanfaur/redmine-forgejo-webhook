@@ -43,9 +43,16 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
       post :create, body: payload.to_json
     end
 
-    authors = Issue.find(1).journals.last(2).map(&:user_id)
-    assert_includes authors, 2 # jsmith
-    assert_includes authors, 3 # dlopper
+    last_two = Issue.find(1).journals.last(2)
+
+    jsmith_journal = last_two.find { |j| j.user_id == 2 }
+    dlopper_journal = last_two.find { |j| j.user_id == 3 }
+
+    refute_nil jsmith_journal, 'jsmith should have a journal'
+    refute_nil dlopper_journal, 'dlopper should have a journal'
+
+    assert_includes jsmith_journal.notes, 'Author: John Smith <jsmith@somenet.foo>'
+    assert_includes dlopper_journal.notes, 'Author: Dave Lopper <dlopper@somenet.foo>'
   end
 
   def test_falls_back_to_anonymous_when_resolved_user_save_fails
@@ -72,6 +79,8 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
 
       journal = Issue.find(1).journals.last
       assert_equal User.anonymous, journal.user
+      assert_equal 2, self.class.class_variable_get(:@@__fallback_test_calls),
+                   'expected exactly 2 Issue#save invocations (1 failed + 1 anonymous retry)'
     ensure
       Issue.class_eval do
         remove_method :save
