@@ -79,16 +79,17 @@ class ForgejoWebhookController < ApplicationController
   def handle_pull_request_event(payload)
     action = payload['action']
     pr = payload['pull_request']
-    pr_number = pr['number']
-    title = pr['title']
-    body = pr['body']
+    user_hash = pr['user'].is_a?(Hash) ? pr['user'] : {}
+    actor = {
+      name:     user_hash['full_name'].presence || user_hash['login'],
+      email:    user_hash['email'],
+      username: user_hash['login']
+    }
 
-    Rails.logger.info "Forgejo Webhook: Pull request #{action}: ##{pr_number} - #{title}"
+    Rails.logger.info "Forgejo Webhook: Pull request #{action}: ##{pr['number']} - #{pr['title']}"
 
-    # Process PR title and body for issue references
-    # TODO(task-8): wire PR sender as actor via pull_request.user
-    process_commit_message(title, pr, {})
-    process_commit_message(body, pr, {}) if body.present?
+    process_commit_message(pr['title'], pr, actor)
+    process_commit_message(pr['body'], pr, actor) if pr['body'].present?
   end
 
   def handle_issues_event(payload)

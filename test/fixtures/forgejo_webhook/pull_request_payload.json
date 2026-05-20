@@ -1,0 +1,10 @@
+{
+  "action": "opened",
+  "pull_request": {
+    "number": 42,
+    "title": "Address #1 in PR",
+    "body": "Long PR description.",
+    "user": { "login": "jsmith", "full_name": "John Smith", "email": null },
+    "url": "https://forge.example/demo/pulls/42"
+  }
+}

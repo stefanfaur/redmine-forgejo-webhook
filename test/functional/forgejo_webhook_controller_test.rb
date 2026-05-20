@@ -89,4 +89,16 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
       end
     end
   end
+
+  def test_pr_event_attributes_to_pr_opener_via_username
+    payload = JSON.parse(File.read(Rails.root.join('plugins/redmine_forgejo_webhook/test/fixtures/forgejo_webhook/pull_request_payload.json')))
+
+    @request.headers['Content-Type'] = 'application/json'
+    @request.headers['X-Gitea-Event'] = 'pull_request'
+    post :create, body: payload.to_json
+
+    journal = Issue.find(1).journals.last
+    assert_equal User.find(2), journal.user
+    assert_includes journal.notes, 'Author: John Smith'
+  end
 end
