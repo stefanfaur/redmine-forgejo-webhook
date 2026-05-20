@@ -68,12 +68,11 @@ class ForgejoWebhookController < ApplicationController
   def handle_push_event(payload)
     repository_name = payload.dig('repository', 'name')
     commits = payload['commits'] || []
-    
+
     commits.each do |commit|
-      message = commit['message']
-      process_commit_message(message, commit)
+      process_commit_message(commit['message'], commit, actor_from(commit['author']))
     end
-    
+
     Rails.logger.info "Forgejo Webhook: Processed push event for #{repository_name} with #{commits.size} commits"
   end
 
@@ -83,12 +82,12 @@ class ForgejoWebhookController < ApplicationController
     pr_number = pr['number']
     title = pr['title']
     body = pr['body']
-    
+
     Rails.logger.info "Forgejo Webhook: Pull request #{action}: ##{pr_number} - #{title}"
-    
+
     # Process PR title and body for issue references
-    process_commit_message(title, pr)
-    process_commit_message(body, pr) if body.present?
+    process_commit_message(title, pr, {})
+    process_commit_message(body, pr, {}) if body.present?
   end
 
   def handle_issues_event(payload)
@@ -96,88 +95,74 @@ class ForgejoWebhookController < ApplicationController
     issue = payload['issue']
     issue_number = issue['number']
     title = issue['title']
-    
+
     Rails.logger.info "Forgejo Webhook: Issue #{action}: ##{issue_number} - #{title}"
   end
 
-  def process_commit_message(message, commit_data)
-    # Find issue references in commit message (e.g., #123, refs #123, fixes #123)
-    issue_pattern = /(?:refs?|references?|fixes?|fixed|close[sd]?)\s*#(\d+)/i
-    simple_pattern = /#(\d+)/
-    
-    issue_ids = []
-    
-    # Look for keyword references first
-    message.scan(issue_pattern) do |match|
-      issue_ids << match[0].to_i
-    end
-    
-    # If no keyword references found, look for simple #123 references
-    if issue_ids.empty?
-      message.scan(simple_pattern) do |match|
-        issue_ids << match[0].to_i
-      end
-    end
-    
-    issue_ids.uniq.each do |issue_id|
-      update_issue(issue_id, message, commit_data)
-    end
+  def actor_from(hash)
+    return {} unless hash.is_a?(Hash)
+    { name: hash['name'], email: hash['email'], username: hash['username'] }
   end
 
-  def update_issue(issue_id, message, commit_data)
+  def process_commit_message(message, commit_data, actor)
+    return if message.blank?
+
+    issue_pattern = /(?:refs?|references?|fixes?|fixed|close[sd]?)\s*#(\d+)/i
+    simple_pattern = /#(\d+)/
+
+    issue_ids = []
+    message.scan(issue_pattern) { |m| issue_ids << m[0].to_i }
+    message.scan(simple_pattern) { |m| issue_ids << m[0].to_i } if issue_ids.empty?
+
+    issue_ids.uniq.each { |id| update_issue(id, message, commit_data, actor) }
+  end
+
+  def update_issue(issue_id, message, commit_data, actor)
     issue = Issue.find_by(id: issue_id)
-    
     unless issue
       Rails.logger.warn "Forgejo Webhook: Issue ##{issue_id} not found"
       return
     end
-    
-    # Check project scope if specified
+
     if @project && issue.project_id != @project.id
       Rails.logger.warn "Forgejo Webhook: Issue ##{issue_id} not in project #{@project.identifier}"
       return
     end
-    
-    # Create a journal entry (comment) on the issue
-    journal = issue.init_journal(User.anonymous, create_journal_notes(message, commit_data))
-    
-    # Check if we should close or reopen the issue
-    if should_close_issue?(message)
-      close_issue(issue) if issue.status.is_closed == false
-    elsif should_reopen_issue?(message)
-      reopen_issue(issue) if issue.status.is_closed == true
-    end
-    
-    if issue.save
-      Rails.logger.info "Forgejo Webhook: Updated issue ##{issue_id}"
-    else
-      Rails.logger.error "Forgejo Webhook: Failed to update issue ##{issue_id}: #{issue.errors.full_messages.join(', ')}"
-    end
-  rescue => e
-    Rails.logger.error "Forgejo Webhook: Error updating issue ##{issue_id}: #{e.message}"
+
+    resolved = ForgejoWebhook::UserResolver.new(
+      name: actor[:name], email: actor[:email], username: actor[:username]
+    ).call
+    notes = ForgejoWebhook::NoteBuilder.new(message, commit_data, resolved.attribution).call
+
+    save_with_fallback(issue_id, notes, resolved.user, message)
   end
 
-  def create_journal_notes(message, commit_data)
-    notes = "Commit referenced this issue"
-    
-    if commit_data['sha'] || commit_data['id']
-      sha = commit_data['sha'] || commit_data['id']
-      short_sha = sha[0..7]
-      notes += ": @#{short_sha}@"
+  def save_with_fallback(issue_id, notes, user, message)
+    return true if attempt(Issue.find(issue_id), user, notes, message)
+
+    # Re-fetch a clean Issue object — init_journal uses @current_journal ||= ...
+    # so retrying on the same instance would reuse the failed journal.
+    attempt(Issue.find(issue_id), User.anonymous, notes, message)
+  end
+
+  def attempt(issue, user, notes, message)
+    issue.init_journal(user, notes)
+    apply_status_change(issue, message)
+    return true if issue.save
+
+    Rails.logger.warn "Forgejo Webhook: save as #{user.login.presence || 'anonymous'} failed: #{issue.errors.full_messages.join(', ')}"
+    false
+  rescue => e
+    Rails.logger.error "Forgejo Webhook: save raised #{e.class}: #{e.message}"
+    false
+  end
+
+  def apply_status_change(issue, message)
+    if should_close_issue?(message) && !issue.status.is_closed
+      close_issue(issue)
+    elsif should_reopen_issue?(message) && issue.status.is_closed
+      reopen_issue(issue)
     end
-    
-    if commit_data['url']
-      notes += "\n\n#{commit_data['url']}"
-    end
-    
-    if message.present?
-      # Limit message length in notes
-      commit_msg = message.lines.first&.strip || message
-      commit_msg = commit_msg[0..200] + '...' if commit_msg.length > 200
-      notes += "\n\n> #{commit_msg}"
-    end
-    
-    notes
   end
 
   def should_close_issue?(message)
