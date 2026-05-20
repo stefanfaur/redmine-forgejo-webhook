@@ -78,6 +78,8 @@ class ForgejoWebhookController < ApplicationController
 
   def handle_pull_request_event(payload)
     action = payload['action']
+    # All PR actions (opened, synchronize, label, assign, ...) are processed.
+    # Pre-existing behavior; filter by action in a future change if spam becomes an issue.
     pr = payload['pull_request']
     user_hash = pr['user'].is_a?(Hash) ? pr['user'] : {}
     actor = {
