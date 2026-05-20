@@ -10,7 +10,8 @@ class ForgejoWebhook::UserResolverTest < ActiveSupport::TestCase
     ).call
 
     assert_equal user, result.user
-    assert_equal 'Author: John Smith <JSMITH@somenet.foo>', result.attribution
+    assert_nil result.attribution,
+               'attribution must be nil when the journal is already attributed to a resolved user'
   end
 
   def test_returns_anonymous_when_email_blank_and_username_blank
@@ -26,6 +27,8 @@ class ForgejoWebhook::UserResolverTest < ActiveSupport::TestCase
     ).call
 
     assert_equal user, result.user
+    assert_nil result.attribution,
+               'attribution must be nil when resolved via username fallback'
   end
 
   def test_skips_locked_user_matched_by_email_and_falls_through

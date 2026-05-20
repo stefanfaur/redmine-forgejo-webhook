@@ -9,7 +9,11 @@ module ForgejoWebhook
     end
 
     def call
-      Result.new(user: lookup || User.anonymous, attribution: build_attribution)
+      user = lookup
+      Result.new(
+        user:        user || User.anonymous,
+        attribution: user ? nil : build_attribution
+      )
     end
 
     private

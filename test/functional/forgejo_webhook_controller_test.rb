@@ -31,7 +31,8 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
     assert_equal User.find(2), journal.user, 'journal author should be jsmith'
     assert_includes journal.notes, '> Long body explaining the change.'
     assert_includes journal.notes, '> Second line of body.'
-    assert_includes journal.notes, 'Author: John Smith <jsmith@somenet.foo>'
+    refute_includes journal.notes, 'Author:',
+                    'Author line must be omitted when commit author was resolved to a Redmine user'
   end
 
   def test_multi_author_push_creates_one_journal_per_commit_with_correct_authors
@@ -51,8 +52,10 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
     refute_nil jsmith_journal, 'jsmith should have a journal'
     refute_nil dlopper_journal, 'dlopper should have a journal'
 
-    assert_includes jsmith_journal.notes, 'Author: John Smith <jsmith@somenet.foo>'
-    assert_includes dlopper_journal.notes, 'Author: Dave Lopper <dlopper@somenet.foo>'
+    refute_includes jsmith_journal.notes, 'Author:',
+                    'Author line must be omitted for resolved jsmith commit'
+    refute_includes dlopper_journal.notes, 'Author:',
+                    'Author line must be omitted for resolved dlopper commit'
   end
 
   def test_falls_back_to_anonymous_when_resolved_user_save_fails
@@ -69,7 +72,28 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
       assert_equal User.anonymous, journal.user
       assert_equal 2, failing_save_call_count,
                    'expected exactly 2 Issue#save invocations (1 failed + 1 anonymous retry)'
+      refute_includes journal.notes, 'Author:',
+                      'Author line stays omitted across fallback because the commit author was resolved'
     end
+  end
+
+  def test_push_with_unresolved_author_keeps_author_line_in_notes
+    payload = push_payload
+    payload['commits'][0]['author'] = {
+      'name'     => 'Ghost Author',
+      'email'    => 'ghost@nowhere.invalid',
+      'username' => 'ghost-user'
+    }
+
+    @request.headers['Content-Type'] = 'application/json'
+    @request.headers['X-Gitea-Event'] = 'push'
+    post :create, body: payload.to_json
+
+    journal = Issue.find(1).journals.last
+    assert_equal User.anonymous, journal.user,
+                 'unresolvable author should fall through to anonymous journal'
+    assert_includes journal.notes, 'Author: Ghost Author <ghost@nowhere.invalid>',
+                    'Author line must be present when commit author cannot be resolved'
   end
 
   def test_pr_event_with_null_pull_request_does_not_crash
@@ -94,7 +118,8 @@ class ForgejoWebhookControllerTest < Redmine::ControllerTest
 
     journal = Issue.find(1).journals.last
     assert_equal User.find(2), journal.user
-    assert_includes journal.notes, 'Author: John Smith'
+    refute_includes journal.notes, 'Author:',
+                    'Author line must be omitted when PR opener was resolved to a Redmine user'
   end
 
   def test_close_keyword_closes_issue_with_resolved_user
