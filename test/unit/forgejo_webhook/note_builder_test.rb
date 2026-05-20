@@ -74,4 +74,25 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     assert_match(/bq\.\. .+Body line\..*\np\. /m, note,
                  'textile terminator must appear after body content')
   end
+
+  def test_truncates_message_byte_safely_when_oversized
+    Setting.text_formatting = 'markdown'
+    giant = "x" * 70_000
+    note = ForgejoWebhook::NoteBuilder.new(giant, { 'sha' => 'aaaaaaaa' }, 'Author: A').call
+
+    assert_operator note.bytesize, :<=, 60_000
+    assert_includes note, '… [truncated]'
+    assert_includes note, 'Commit referenced this issue: @aaaaaaaa@'
+    assert_includes note, 'Author: A'
+  end
+
+  def test_truncation_does_not_split_multibyte_codepoint
+    Setting.text_formatting = 'markdown'
+    # emoji is 4 bytes in utf8mb4; fill above the cap
+    giant = ("\u{1F600}" * 20_000) # 80_000 bytes
+    note = ForgejoWebhook::NoteBuilder.new(giant, { 'sha' => 'aaaaaaaa' }, nil).call
+
+    assert_operator note.bytesize, :<=, 60_000
+    assert_predicate note, :valid_encoding?
+  end
 end
