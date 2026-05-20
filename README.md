@@ -83,6 +83,18 @@ git commit -m "Fixed the problem, fixed #789"
 
 These commits will automatically close the referenced issues (if auto-close is enabled).
 
+### Author Resolution
+
+The plugin maps the commit author to a Redmine user so journal notes are attributed correctly:
+
+1. Match by commit author email (case-insensitive) against `EmailAddress` records.
+2. If no email match, match by username against Redmine login (case-insensitive).
+3. If neither matches, fall back to `Anonymous` and add an `Author:` line to the note for traceability.
+
+If the matched Redmine user lacks permission to comment on the project, the plugin retries the save as `Anonymous` so commit references never silently disappear.
+
+Pull request events are attributed to the PR opener via their username (`pull_request.user.login`); Forgejo / Gitea typically omit `user.email` in PR webhooks for privacy.
+
 ### Reopening Issues
 
 If enabled, you can reopen issues:
