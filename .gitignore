@@ -5,3 +5,15 @@
 .idea/
 *.iml
 .vscode/
+
+# repowise local cache (lancedb, jobs, .env, wiki.db)
+.repowise/
+
+# local debug artifacts
+tmp/
+
+# provider API keys (local, contains secrets — never commit)
+provider_config.json
+
+# per-developer Claude Code permissions
+.claude/settings.local.json
