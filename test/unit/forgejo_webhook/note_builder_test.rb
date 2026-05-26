@@ -15,8 +15,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "feat: add thing\n\nDetailed body.\nSecond line.\n"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, 'Author: Jane <jane@x.com>').call
 
-    assert_match %r{<a href="https://example\.com/commit/a1b2c3d4"[^>]*><code>a1b2c3d4</code></a>}, note,
-                 "header must contain anchor wrapping SHA in code tag (got: #{note})"
+    assert_includes note, '[`a1b2c3d4`](<https://example.com/commit/a1b2c3d4>)',
+                    "header must contain markdown link wrapping SHA backticks (got: #{note})"
     assert_includes note, 'Author: Jane <jane@x.com>'
     assert_includes note, "> feat: add thing"
     assert_includes note, "> Detailed body."
@@ -27,10 +27,10 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
   def test_omits_blockquote_when_message_blank
     note = ForgejoWebhook::NoteBuilder.new('', { 'sha' => 'aaaaaaaa' }, 'Author: Jane').call
 
-    assert_match %r{<code>aaaaaaaa</code>}, note,
-                 "header must contain SHA in code tag (got: #{note})"
-    refute_match %r{<a\b}, note,
-                 "header must not contain anchor when URL is missing (got: #{note})"
+    assert_includes note, '`aaaaaaaa`',
+                    "header must contain SHA in markdown backticks (got: #{note})"
+    refute_match %r{\]\(<https?://}, note,
+                 "header must not contain a markdown link when URL is missing (got: #{note})"
     assert_includes note, 'Author: Jane'
     refute_includes note, '>'
   end
@@ -43,8 +43,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
   def test_omits_url_line_when_missing
     note = ForgejoWebhook::NoteBuilder.new('msg', { 'sha' => 'aaaaaaaa' }, nil).call
     refute_includes note, 'http'
-    refute_match %r{<a\b}, note,
-                 "header must not contain anchor tag when URL is missing (got: #{note})"
+    refute_match %r{\]\(<https?://}, note,
+                 "header must not contain a markdown link when URL is missing (got: #{note})"
   end
 
   def test_omits_sha_in_header_when_missing
@@ -125,8 +125,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
 
     assert_operator note.bytesize, :<=, 60_000
     assert_includes note, '… [truncated]'
-    assert_match %r{<code>aaaaaaaa</code>}, note,
-                 "truncated note must preserve header with SHA in code tag (got: #{note})"
+    assert_includes note, '`aaaaaaaa`',
+                    "truncated note must preserve header with SHA in markdown backticks (got: #{note})"
     assert_includes note, 'Author: A'
   end
 
@@ -145,8 +145,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "test message"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
 
-    assert_match %r{<a href="https://example\.com/commit/a1b2c3d4"[^>]*><code>a1b2c3d4</code></a>}, note,
-                 "header must contain anchor wrapping the short SHA in a code tag (got: #{note})"
+    assert_includes note, '[`a1b2c3d4`](<https://example.com/commit/a1b2c3d4>)',
+                    "header must contain markdown link wrapping SHA backticks (got: #{note})"
   end
 
   def test_textile_render_produces_anchor_around_sha
@@ -196,10 +196,10 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "test message"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
 
-    assert_match %r{<code>a1b2c3d4</code>}, note,
-                 "header must contain short SHA in code tag (got: #{note})"
-    refute_match %r{<a\b}, note,
-                 "header must not contain an anchor tag when URL is missing (got: #{note})"
+    assert_includes note, '`a1b2c3d4`',
+                    "header must contain short SHA in markdown backticks (got: #{note})"
+    refute_match %r{\]\(<https?://}, note,
+                 "header must not contain a markdown link when URL is missing (got: #{note})"
   end
 
   def test_rejects_javascript_scheme_url
@@ -207,13 +207,15 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "test message"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
 
-    assert_match %r{<code>a1b2c3d4</code>}, note,
-                 "header must contain code tag even with unsafe URL (got: #{note})"
-    refute_match %r{<a\b}, note,
-                 "header must not contain an anchor for javascript: scheme (got: #{note})"
+    assert_includes note, '`a1b2c3d4`',
+                    "header must contain SHA in markdown backticks even with unsafe URL (got: #{note})"
+    refute_includes note, 'javascript:',
+                    "note must not contain a javascript: URL (got: #{note})"
 
     ['textile', 'markdown'].each do |fmt|
-      html = Redmine::WikiFormatting.to_html(fmt, note).to_s
+      Setting.text_formatting = fmt
+      reformatted = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+      html = Redmine::WikiFormatting.to_html(fmt, reformatted).to_s
       fragment = Nokogiri::HTML.fragment(html)
       javascript_anchors = fragment.css('a[href*="javascript:"]')
       assert_empty javascript_anchors,
@@ -226,13 +228,15 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "test message"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
 
-    assert_match %r{<code>a1b2c3d4</code>}, note,
-                 "header must contain code tag even with unsafe URL (got: #{note})"
-    refute_match %r{<a\b}, note,
-                 "header must not contain an anchor for data: scheme (got: #{note})"
+    assert_includes note, '`a1b2c3d4`',
+                    "header must contain SHA in markdown backticks even with unsafe URL (got: #{note})"
+    refute_includes note, 'data:text/html',
+                    "note must not contain a data: URL (got: #{note})"
 
     ['textile', 'markdown'].each do |fmt|
-      html = Redmine::WikiFormatting.to_html(fmt, note).to_s
+      Setting.text_formatting = fmt
+      reformatted = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+      html = Redmine::WikiFormatting.to_html(fmt, reformatted).to_s
       fragment = Nokogiri::HTML.fragment(html)
       data_anchors = fragment.css('a[href*="data:"]')
       assert_empty data_anchors,
@@ -245,13 +249,15 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "test message"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
 
-    assert_match %r{<code>a1b2c3d4</code>}, note,
-                 "header must contain code tag even with unsafe URL (got: #{note})"
-    refute_match %r{<a\b}, note,
-                 "header must not contain an anchor for protocol-relative URL (got: #{note})"
+    assert_includes note, '`a1b2c3d4`',
+                    "header must contain SHA in markdown backticks even with unsafe URL (got: #{note})"
+    refute_includes note, '//evil.example',
+                    "note must not contain the protocol-relative URL (got: #{note})"
 
     ['textile', 'markdown'].each do |fmt|
-      html = Redmine::WikiFormatting.to_html(fmt, note).to_s
+      Setting.text_formatting = fmt
+      reformatted = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+      html = Redmine::WikiFormatting.to_html(fmt, reformatted).to_s
       fragment = Nokogiri::HTML.fragment(html)
       rel_anchors = fragment.css('a[href^="//"]')
       assert_empty rel_anchors,
@@ -259,24 +265,21 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     end
   end
 
-  def test_html_escapes_url_attribute
+  def test_rejects_url_with_unsafe_chars
     commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://x.com/?a=1&b=2&c="evil' }
     message = "test message"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
 
-    assert_match %r{&amp;}, note,
-                 "raw note must contain escaped ampersands (got: #{note})"
-    assert_match %r{&quot;}, note,
-                 "raw note must contain escaped quotes (got: #{note})"
-
-    fragment = Nokogiri::HTML.fragment(note)
-    anchor = fragment.at_css('a')
-    assert_not_nil anchor, "expected an anchor element (got: #{note})"
-    assert_equal 'https://x.com/?a=1&b=2&c="evil', anchor[:href],
-                 "anchor href must be unescaped to original URL after DOM parsing (got: #{anchor[:href]})"
+    assert_includes note, '`a1b2c3d4`',
+                    "header must contain SHA in markdown backticks even with unsafe URL (got: #{note})"
+    refute_includes note, '"evil',
+                    "note must not contain the unsafe URL substring (got: #{note})"
+    refute_match %r{\]\(<https?://}, note,
+                 "header must not contain a markdown link for an unsafe URL (got: #{note})"
   end
 
   def test_truncation_preserves_anchor_tag
+    Setting.text_formatting = 'markdown'
     large_body = "x" * 70_000
     commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://example.com/commit/a1b2c3d4' }
     note = ForgejoWebhook::NoteBuilder.new(large_body, commit, nil).call
@@ -287,12 +290,16 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     assert_includes note, '… [truncated]',
                     "note should contain truncation marker (got: #{note.slice(0..200)}...)"
 
-    fragment = Nokogiri::HTML.fragment(note)
-    anchors = fragment.css('a')
-    assert_equal 1, anchors.length,
-                 "note must contain exactly one anchor after truncation (got: #{anchors.length})"
-    assert_equal 'https://example.com/commit/a1b2c3d4', anchors[0][:href],
-                 "anchor href must match the commit URL (got: #{anchors[0][:href]})"
+    assert_includes note, '[`a1b2c3d4`](<https://example.com/commit/a1b2c3d4>)',
+                    "truncated note must preserve the full markdown link in the header (got: #{note.slice(0..200)})"
+
+    html = Redmine::WikiFormatting.to_html('markdown', note).to_s
+    fragment = Nokogiri::HTML.fragment(html)
+    anchor = fragment.at_css('a')
+    assert_not_nil anchor,
+                   "rendered HTML must contain an anchor after truncation (got: #{html.slice(0..200)})"
+    assert_equal 'https://example.com/commit/a1b2c3d4', anchor[:href],
+                 "anchor href must match the commit URL (got: #{anchor[:href]})"
   end
 
   def test_omits_url_line_unconditionally

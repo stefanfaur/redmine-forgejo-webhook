@@ -2,6 +2,8 @@ module ForgejoWebhook
   class NoteBuilder
     MAX_BYTES = 60_000
     TRUNCATE_MARKER = "\n> … [truncated]"
+    URL_SAFE_CHARS = %r{\A[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+\z}.freeze
+    MARKDOWN_FORMATTERS = %w[markdown common_mark].freeze
 
     def initialize(message, commit_data, attribution)
       @message = message.to_s
@@ -31,21 +33,28 @@ module ForgejoWebhook
 
     def header_line
       sha = (@commit_data['sha'] || @commit_data['id']).to_s
+      return 'Commit referenced this issue' if sha.empty?
 
-      if sha.empty?
-        'Commit referenced this issue'
-      else
-        short_sha = sha[0..7]
-        escaped_sha = ERB::Util.html_escape(short_sha)
-        url = safe_url
+      short_sha = sha[0..7]
+      url = safe_url
 
+      if markdown_formatter?
         if url
-          escaped_url = ERB::Util.html_escape(url)
-          "Commit referenced this issue: <a href=\"#{escaped_url}\"><code>#{escaped_sha}</code></a>"
+          "Commit referenced this issue: [`#{short_sha}`](<#{url}>)"
         else
-          "Commit referenced this issue: <code>#{escaped_sha}</code>"
+          "Commit referenced this issue: `#{short_sha}`"
+        end
+      else
+        if url
+          "Commit referenced this issue: \"@#{short_sha}@\":#{url}"
+        else
+          "Commit referenced this issue: @#{short_sha}@"
         end
       end
+    end
+
+    def markdown_formatter?
+      MARKDOWN_FORMATTERS.include?(Setting.text_formatting.to_s)
     end
 
     def safe_url
@@ -59,6 +68,7 @@ module ForgejoWebhook
       end
 
       return nil unless uri.scheme && %w[http https].include?(uri.scheme)
+      return nil unless raw_url.match?(URL_SAFE_CHARS)
 
       raw_url
     end
