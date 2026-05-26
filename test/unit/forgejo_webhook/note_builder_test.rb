@@ -133,4 +133,170 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     assert_operator note.bytesize, :<=, 60_000
     assert_predicate note, :valid_encoding?
   end
+
+  def test_header_links_sha_when_url_present
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://example.com/commit/a1b2c3d4' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    assert_match %r{<a href="https://example\.com/commit/a1b2c3d4"[^>]*><code>a1b2c3d4</code></a>}, note,
+                 "header must contain anchor wrapping the short SHA in a code tag (got: #{note})"
+  end
+
+  def test_textile_render_produces_anchor_around_sha
+    Setting.text_formatting = 'textile'
+
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://example.com/commit/a1b2c3d4' }
+    message = "commit message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    html = Redmine::WikiFormatting.to_html('textile', note).to_s
+    fragment = Nokogiri::HTML.fragment(html)
+
+    anchor = fragment.at_css('a')
+    assert_not_nil anchor, "expected an anchor element in rendered HTML (got: #{html})"
+    assert_equal 'https://example.com/commit/a1b2c3d4', anchor[:href],
+                 "anchor href must match the commit URL (got: #{anchor[:href]})"
+
+    code = anchor.at_css('code')
+    assert_not_nil code, "expected a code element inside the anchor (got: #{html})"
+    assert_equal 'a1b2c3d4', code.text,
+                 "code text must be the short SHA (got: #{code.text})"
+  end
+
+  def test_markdown_render_produces_anchor_around_sha
+    Setting.text_formatting = 'markdown'
+
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://example.com/commit/a1b2c3d4' }
+    message = "commit message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    html = Redmine::WikiFormatting.to_html('markdown', note).to_s
+    fragment = Nokogiri::HTML.fragment(html)
+
+    anchor = fragment.at_css('a')
+    assert_not_nil anchor, "expected an anchor element in rendered HTML (got: #{html})"
+    assert_equal 'https://example.com/commit/a1b2c3d4', anchor[:href],
+                 "anchor href must match the commit URL (got: #{anchor[:href]})"
+
+    code = anchor.at_css('code')
+    assert_not_nil code, "expected a code element inside the anchor (got: #{html})"
+    assert_equal 'a1b2c3d4', code.text,
+                 "code text must be the short SHA (got: #{code.text})"
+  end
+
+  def test_header_renders_code_only_when_url_missing
+    commit = { 'sha' => 'a1b2c3d4abcdef' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    assert_match %r{<code>a1b2c3d4</code>}, note,
+                 "header must contain short SHA in code tag (got: #{note})"
+    refute_match %r{<a\b}, note,
+                 "header must not contain an anchor tag when URL is missing (got: #{note})"
+  end
+
+  def test_rejects_javascript_scheme_url
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'javascript:alert(1)' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    assert_match %r{<code>a1b2c3d4</code>}, note,
+                 "header must contain code tag even with unsafe URL (got: #{note})"
+    refute_match %r{<a\b}, note,
+                 "header must not contain an anchor for javascript: scheme (got: #{note})"
+
+    ['textile', 'markdown'].each do |fmt|
+      html = Redmine::WikiFormatting.to_html(fmt, note).to_s
+      fragment = Nokogiri::HTML.fragment(html)
+      javascript_anchors = fragment.css('a[href*="javascript:"]')
+      assert_empty javascript_anchors,
+                   "rendered HTML must not contain javascript: anchors in #{fmt} mode (got: #{html})"
+    end
+  end
+
+  def test_rejects_data_scheme_url
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'data:text/html,<script>alert(1)</script>' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    assert_match %r{<code>a1b2c3d4</code>}, note,
+                 "header must contain code tag even with unsafe URL (got: #{note})"
+    refute_match %r{<a\b}, note,
+                 "header must not contain an anchor for data: scheme (got: #{note})"
+
+    ['textile', 'markdown'].each do |fmt|
+      html = Redmine::WikiFormatting.to_html(fmt, note).to_s
+      fragment = Nokogiri::HTML.fragment(html)
+      data_anchors = fragment.css('a[href*="data:"]')
+      assert_empty data_anchors,
+                   "rendered HTML must not contain data: anchors in #{fmt} mode (got: #{html})"
+    end
+  end
+
+  def test_rejects_protocol_relative_url
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => '//evil.example/x' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    assert_match %r{<code>a1b2c3d4</code>}, note,
+                 "header must contain code tag even with unsafe URL (got: #{note})"
+    refute_match %r{<a\b}, note,
+                 "header must not contain an anchor for protocol-relative URL (got: #{note})"
+
+    ['textile', 'markdown'].each do |fmt|
+      html = Redmine::WikiFormatting.to_html(fmt, note).to_s
+      fragment = Nokogiri::HTML.fragment(html)
+      rel_anchors = fragment.css('a[href^="//"]')
+      assert_empty rel_anchors,
+                   "rendered HTML must not contain protocol-relative anchors in #{fmt} mode (got: #{html})"
+    end
+  end
+
+  def test_html_escapes_url_attribute
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://x.com/?a=1&b=2&c="evil' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    assert_match %r{&amp;}, note,
+                 "raw note must contain escaped ampersands (got: #{note})"
+    assert_match %r{&quot;}, note,
+                 "raw note must contain escaped quotes (got: #{note})"
+
+    fragment = Nokogiri::HTML.fragment(note)
+    anchor = fragment.at_css('a')
+    assert_not_nil anchor, "expected an anchor element (got: #{note})"
+    assert_equal 'https://x.com/?a=1&b=2&c="evil', anchor[:href],
+                 "anchor href must be unescaped to original URL after DOM parsing (got: #{anchor[:href]})"
+  end
+
+  def test_truncation_preserves_anchor_tag
+    large_body = "x" * 70_000
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://example.com/commit/a1b2c3d4' }
+    note = ForgejoWebhook::NoteBuilder.new(large_body, commit, nil).call
+
+    assert_operator note.bytesize, :<=, 60_000,
+                    "note must not exceed 60 000 bytes (got: #{note.bytesize})"
+
+    assert_includes note, '… [truncated]',
+                    "note should contain truncation marker (got: #{note.slice(0..200)}...)"
+
+    fragment = Nokogiri::HTML.fragment(note)
+    anchors = fragment.css('a')
+    assert_equal 1, anchors.length,
+                 "note must contain exactly one anchor after truncation (got: #{anchors.length})"
+    assert_equal 'https://example.com/commit/a1b2c3d4', anchors[0][:href],
+                 "anchor href must match the commit URL (got: #{anchors[0][:href]})"
+  end
+
+  def test_omits_url_line_unconditionally
+    commit = { 'sha' => 'a1b2c3d4abcdef', 'url' => 'https://example.com/commit/a1b2c3d4' }
+    message = "test message"
+    note = ForgejoWebhook::NoteBuilder.new(message, commit, nil).call
+
+    url = 'https://example.com/commit/a1b2c3d4'
+    count = note.scan(url).length
+    assert_equal 1, count,
+                 "URL must appear exactly once in the note (as href attribute), not as standalone line (got: #{count} occurrences)"
+  end
 end
