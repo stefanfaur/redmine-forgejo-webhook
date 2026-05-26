@@ -34,6 +34,21 @@ module ForgejoWebhook
       end
     end
 
+    def safe_url
+      raw_url = @commit_data['url'].to_s
+      return nil if raw_url.empty?
+
+      begin
+        uri = URI.parse(raw_url)
+      rescue URI::InvalidURIError
+        return nil
+      end
+
+      return nil unless uri.scheme && %w[http https].include?(uri.scheme)
+
+      raw_url
+    end
+
     def url
       @commit_data['url'].to_s
     end
