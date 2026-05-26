@@ -17,7 +17,6 @@ module ForgejoWebhook
     def build_unbounded
       lines = []
       lines << header_line
-      lines << "\n#{url}" if url.present?
       lines << "\n#{@attribution}" if @attribution.present?
       lines << "\n#{blockquote}" if blockquote_present?
       lines.join
@@ -57,10 +56,6 @@ module ForgejoWebhook
       return nil unless uri.scheme && %w[http https].include?(uri.scheme)
 
       raw_url
-    end
-
-    def url
-      @commit_data['url'].to_s
     end
 
     def body
