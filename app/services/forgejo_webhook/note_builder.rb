@@ -27,10 +27,20 @@ module ForgejoWebhook
 
     def header_line
       sha = (@commit_data['sha'] || @commit_data['id']).to_s
+
       if sha.empty?
         'Commit referenced this issue'
       else
-        "Commit referenced this issue: @#{sha[0..7]}@"
+        short_sha = sha[0..7]
+        escaped_sha = ERB::Util.html_escape(short_sha)
+        url = safe_url
+
+        if url
+          escaped_url = ERB::Util.html_escape(url)
+          "Commit referenced this issue: <a href=\"#{escaped_url}\"><code>#{escaped_sha}</code></a>"
+        else
+          "Commit referenced this issue: <code>#{escaped_sha}</code>"
+        end
       end
     end
 
