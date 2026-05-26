@@ -15,8 +15,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
     message = "feat: add thing\n\nDetailed body.\nSecond line.\n"
     note = ForgejoWebhook::NoteBuilder.new(message, commit, 'Author: Jane <jane@x.com>').call
 
-    assert_includes note, 'Commit referenced this issue: @a1b2c3d4@'
-    assert_includes note, 'https://example.com/commit/a1b2c3d4'
+    assert_match %r{<a href="https://example\.com/commit/a1b2c3d4"[^>]*><code>a1b2c3d4</code></a>}, note,
+                 "header must contain anchor wrapping SHA in code tag (got: #{note})"
     assert_includes note, 'Author: Jane <jane@x.com>'
     assert_includes note, "> feat: add thing"
     assert_includes note, "> Detailed body."
@@ -27,7 +27,10 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
   def test_omits_blockquote_when_message_blank
     note = ForgejoWebhook::NoteBuilder.new('', { 'sha' => 'aaaaaaaa' }, 'Author: Jane').call
 
-    assert_includes note, 'Commit referenced this issue: @aaaaaaaa@'
+    assert_match %r{<code>aaaaaaaa</code>}, note,
+                 "header must contain SHA in code tag (got: #{note})"
+    refute_match %r{<a\b}, note,
+                 "header must not contain anchor when URL is missing (got: #{note})"
     assert_includes note, 'Author: Jane'
     refute_includes note, '>'
   end
@@ -40,6 +43,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
   def test_omits_url_line_when_missing
     note = ForgejoWebhook::NoteBuilder.new('msg', { 'sha' => 'aaaaaaaa' }, nil).call
     refute_includes note, 'http'
+    refute_match %r{<a\b}, note,
+                 "header must not contain anchor tag when URL is missing (got: #{note})"
   end
 
   def test_omits_sha_in_header_when_missing
@@ -120,7 +125,8 @@ class ForgejoWebhook::NoteBuilderTest < ActiveSupport::TestCase
 
     assert_operator note.bytesize, :<=, 60_000
     assert_includes note, '… [truncated]'
-    assert_includes note, 'Commit referenced this issue: @aaaaaaaa@'
+    assert_match %r{<code>aaaaaaaa</code>}, note,
+                 "truncated note must preserve header with SHA in code tag (got: #{note})"
     assert_includes note, 'Author: A'
   end
 
