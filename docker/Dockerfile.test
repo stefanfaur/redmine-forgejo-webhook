@@ -4,7 +4,6 @@ FROM ruby:3.1-bookworm
 ENV DEBIAN_FRONTEND=noninteractive \
     REDMINE_VERSION=5.1.3 \
     LANG=C.UTF-8 \
-    BUNDLE_WITHOUT=development \
     RAILS_ENV=test \
     RUBYOPT=-rlogger
 
@@ -26,11 +25,16 @@ WORKDIR /redmine
 RUN git clone --depth 1 --branch ${REDMINE_VERSION} https://github.com/redmine/redmine.git . \
  && rm -rf .git
 
-# Minimal SQLite test DB config
+# Minimal SQLite DB config for test + development (web preview) envs
 RUN cat > config/database.yml <<'YAML'
 test:
   adapter: sqlite3
   database: db/test.sqlite3
+  timeout: 5000
+
+development:
+  adapter: sqlite3
+  database: db/development.sqlite3
   timeout: 5000
 YAML
 
@@ -38,9 +42,9 @@ YAML
 RUN cp config/configuration.yml.example config/configuration.yml \
  && cp config/settings.yml config/settings.yml.orig
 
-# Install gems including test group
-RUN bundle config set --local without 'development' \
- && bundle install --jobs $(nproc)
+# Install all gem groups (test + development needed for `rails server` in
+# the `web` entrypoint mode, which uses the `listen` gem from the dev group)
+RUN bundle install --jobs $(nproc)
 
 # Plugin will be bind-mounted at /plugin at runtime
 ENV PLUGIN_NAME=redmine_forgejo_webhook
