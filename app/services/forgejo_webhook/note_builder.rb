@@ -15,14 +15,19 @@ module ForgejoWebhook
     end
 
     def build_unbounded
-      lines = []
-      lines << header_line
-      lines << "\n#{@attribution}" if @attribution.present?
-      lines << "\n#{blockquote}" if blockquote_present?
-      lines.join
+      preamble = build_preamble
+      blockquote_content = blockquote_present? ? "\n#{blockquote}" : ""
+      preamble + blockquote_content
     end
 
     private
+
+    def build_preamble
+      lines = []
+      lines << header_line
+      lines << "\n#{@attribution}" if @attribution.present?
+      lines.join
+    end
 
     def header_line
       sha = (@commit_data['sha'] || @commit_data['id']).to_s
@@ -71,9 +76,26 @@ module ForgejoWebhook
     end
 
     def truncate(note)
-      budget = MAX_BYTES - TRUNCATE_MARKER.bytesize
-      sliced = note.byteslice(0, budget).force_encoding('UTF-8').scrub('')
-      sliced + TRUNCATE_MARKER
+      preamble = build_preamble
+      preamble_bytes = preamble.bytesize
+
+      if preamble_bytes >= MAX_BYTES
+        budget = MAX_BYTES - TRUNCATE_MARKER.bytesize
+        sliced = note.byteslice(0, budget).force_encoding('UTF-8').scrub('')
+        return sliced + TRUNCATE_MARKER
+      end
+
+      blockquote_budget = MAX_BYTES - preamble_bytes - TRUNCATE_MARKER.bytesize
+      blockquote_content = blockquote_present? ? "\n#{blockquote}" : ""
+
+      if blockquote_content.bytesize <= blockquote_budget
+        note
+      else
+        sliced_blockquote = blockquote_content.byteslice(0, blockquote_budget)
+                                              .force_encoding('UTF-8')
+                                              .scrub('')
+        preamble + sliced_blockquote + TRUNCATE_MARKER
+      end
     end
   end
 end
